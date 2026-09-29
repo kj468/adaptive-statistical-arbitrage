@@ -152,7 +152,7 @@ The project uses exactly 50 stocks across six sectors.
 - HCL Technologies — HCLTECH.NS
 - Wipro — WIPRO.NS
 - Tech Mahindra — TECHM.NS
-- LTIMindtree — LTIM.NS
+- Coforge — COFORGE.NS
 - Mphasis — MPHASIS.NS
 - Persistent Systems — PERSISTENT.NS
 
@@ -160,7 +160,7 @@ The project uses exactly 50 stocks across six sectors.
 
 - Maruti Suzuki — MARUTI.NS
 - Mahindra & Mahindra — M&M.NS
-- Tata Motors — TATAMOTORS.NS
+- MRF — MRF.NS
 - Bajaj Auto — BAJAJ-AUTO.NS
 - Eicher Motors — EICHERMOT.NS
 - Hero MotoCorp — HEROMOTOCO.NS

@@ -130,11 +130,11 @@ def _download_ticker(ticker: str) -> tuple[pd.DataFrame | None, str | None]:
 
 
 def download_dataset(output_path: Path = OUTPUT_PATH) -> bool:
-    """Download all configured tickers and write a dataset if all downloads succeed.
+    """Download configured tickers and save successful histories to Parquet.
 
-    Actual coverage dates and observation counts are reported for every ticker.
-    The specification does not set a minimum-observation threshold, so none is
-    invented here; incomplete coverage remains visible in the report.
+    Returns True only when every configured ticker is available. A partial file
+    is still written for usable tickers; missing symbols are reported and cause
+    a False return so they are never mistaken for a complete universe.
     """
     datasets: list[pd.DataFrame] = []
     failures: dict[str, str] = {}
@@ -147,30 +147,31 @@ def download_dataset(output_path: Path = OUTPUT_PATH) -> bool:
         elif data is not None:
             datasets.append(data)
 
-    if failures:
-        LOGGER.error(
-            "Dataset not written: %d of %d ticker downloads/validations failed.",
-            len(failures),
-            len(TICKERS),
-        )
-        return False
-
-    if len(datasets) != len(TICKERS):
-        LOGGER.error("Dataset not written: expected %d validated tickers.", len(TICKERS))
+    if not datasets:
+        LOGGER.error("Dataset not written: no ticker histories passed validation.")
         return False
 
     result = pd.concat(datasets, ignore_index=True)
     result = result.sort_values(["date", "ticker"], ignore_index=True)
+    downloaded_tickers = set(result["ticker"].unique())
+    missing_tickers = sorted(set(TICKERS).difference(downloaded_tickers))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     result.to_parquet(output_path, index=False)
     LOGGER.info(
-        "Saved %d observations for %d tickers to %s (requested %s through %s).",
+        "Saved %d observations for %d of %d tickers to %s (requested %s through %s).",
         len(result),
-        result["ticker"].nunique(),
+        len(downloaded_tickers),
+        len(TICKERS),
         output_path,
         DATA_START_DATE,
         DATA_END_DATE,
     )
+    if missing_tickers:
+        LOGGER.warning(
+            "Partial dataset saved. Missing ticker histories (not substituted): %s",
+            ", ".join(missing_tickers),
+        )
+        return False
     return True
 
 

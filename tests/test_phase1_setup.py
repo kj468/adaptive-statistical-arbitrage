@@ -13,6 +13,10 @@ def test_config_contains_the_fixed_50_ticker_universe() -> None:
     assert len(TICKERS) == 50
     assert len(set(TICKERS)) == 50
     assert set(TICKERS) == set(TICKER_TO_SECTOR)
+    assert TICKER_TO_SECTOR["MRF.NS"] == "Automobile"
+    assert TICKER_TO_SECTOR["COFORGE.NS"] == "IT"
+    assert "TATAMOTORS.NS" not in TICKERS
+    assert "LTIM.NS" not in TICKERS
     assert Counter(TICKER_TO_SECTOR.values()) == Counter(
         {
             "Banking & Financial Services": 9,
@@ -66,3 +70,33 @@ def test_download_dataset_writes_parquet_without_network(
     saved = pd.read_parquet(output_path)
     assert saved["ticker"].nunique() == 50
     assert len(saved) == 50
+
+
+def test_download_dataset_saves_successful_histories_when_symbols_fail(
+    monkeypatch, tmp_path
+) -> None:
+    ticker = TICKERS[0]
+    sector = TICKER_TO_SECTOR[ticker]
+    company = download_data.STOCK_UNIVERSE[sector][ticker]
+    available = pd.DataFrame(
+        {
+            "date": [pd.Timestamp("2016-01-04")],
+            "ticker": [ticker],
+            "company": [company],
+            "sector": [sector],
+            "adj_close": [100.0],
+            "volume": [1_000],
+        }
+    )
+
+    def fake_download(requested: str):
+        if requested == ticker:
+            return available, None
+        return None, "download returned no rows"
+
+    monkeypatch.setattr(download_data, "_download_ticker", fake_download)
+    output_path = tmp_path / "partial_market_data.parquet"
+
+    assert not download_data.download_dataset(output_path)
+    saved = pd.read_parquet(output_path)
+    assert saved["ticker"].tolist() == [ticker]
