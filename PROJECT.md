@@ -312,9 +312,13 @@ The scanner should calculate relevant statistics such as:
 - ADF p-value
 - half-life
 - OLS hedge ratio
-- Kalman hedge ratio
-- current z-score
+- z-score as of the last valid observation in the training period
 - number of observations
+
+All scanner statistics use only the 2016–2023 training period. Correlation is
+calculated from daily returns. Do not use 2024–2025 out-of-sample observations
+in scanner calculations. The scanner reports the OLS hedge ratio; Kalman output
+is reserved for the Pair Analyzer and model comparison.
 
 Do NOT create an artificial composite pair score.
 
@@ -327,6 +331,8 @@ The user should see the actual statistics and be able to sort/filter them.
 Correlation is used as a descriptive measure and an initial relationship filter.
 
 Correlation alone does not establish that a pair is suitable for statistical arbitrage.
+
+Calculate correlation using daily returns, not price levels.
 
 The implementation should distinguish:
 
@@ -400,9 +406,8 @@ Estimate the hedge ratio repeatedly using a rolling historical window.
 
 The hedge ratio therefore changes over time.
 
-The rolling window must be configurable.
-
-Use one sensible default.
+The rolling window must be configurable. Use a default of 60 trading
+observations (approximately three months) for the rolling window.
 
 Do not expose many unnecessary parameters.
 
@@ -427,6 +432,11 @@ Do not build a complicated custom filtering framework.
 
 Use a reliable implementation/library.
 
+Initialize the Kalman model using the 2016–2023 training period. Estimate or
+select its model/noise parameters using training data and keep those parameters
+fixed throughout the OOS test. During OOS, update the state estimates
+sequentially using only information available through the current observation.
+
 ---
 
 # 17. Spread
@@ -447,11 +457,18 @@ Use:
 
 Z_t = (Spread_t - mean(Spread)) / std(Spread)
 
-The exact rolling/static estimation method must be implemented consistently.
+Calculate the mean and standard deviation from the previous N spread
+observations only; exclude the current observation from both estimates. N is
+the configured rolling window. If there are not enough previous observations
+or the standard deviation is zero, return an informative unavailable result
+instead of generating a signal.
 
 Most importantly:
 
 **Do not use future information when generating historical trading signals.**
+
+Apply this rule consistently to training signals, OOS signals, and the scanner's
+training-period z-score.
 
 ---
 
@@ -497,13 +514,18 @@ The exact implementation must remain consistent with the defined spread:
 
 Spread = Y - beta X
 
-Document the convention clearly in the code.
+For a positive z-score, short the spread (short Y and take the corresponding
+long X leg); for a negative z-score, long the spread (long Y and take the
+corresponding short X leg). Document the convention clearly in the code.
 
 ---
 
 # 21. Position Sizing
 
-Use fixed capital per pair.
+Allocate the same predetermined fixed capital to each pair. Split that pair's
+capital equally between the two legs by notional value; calculate share
+quantities from the available prices. Use a default capital allocation of
+₹100,000 per pair.
 
 Do not implement:
 
@@ -528,6 +550,11 @@ Use:
 The transaction cost must be configurable.
 
 Apply transaction costs whenever the strategy executes the corresponding trade turnover.
+
+Calculate each leg's P&L from its position and price change, combine the two
+legs, and measure pair return relative to the fixed capital allocated to that
+pair. Apply costs at 10 bps per side to traded notional whenever a position is
+opened, changed, or closed.
 
 This is a simplified assumption.
 
@@ -556,7 +583,20 @@ Testing:
 
 2024–2025
 
-The test period must remain unseen when estimating the model parameters required for the strategy.
+The OOS period must remain unseen when estimating model parameters. At every
+OOS date, the strategy may use only information available by that date; no
+2024–2025 observation may influence an earlier model parameter, hedge ratio,
+signal statistic, or trading decision.
+
+Finalize configuration choices, including the 60-observation rolling window
+and ₹100,000 capital per pair, before examining 2024–2025 OOS performance. Do
+not tune these values against OOS results.
+
+For Rolling OLS, use 2016–2023 observations to initialize/warm up the rolling
+window. During OOS, update the estimate using only observations that have
+become available by that point. For the Kalman model, initialize the filter and
+estimate/select its noise parameters using training data, freeze those model
+parameters for OOS, and update its state sequentially through OOS.
 
 Avoid:
 
@@ -580,6 +620,10 @@ The application should clearly distinguish:
 - Training
 - OOS Test
 - 2026 Demo
+
+For Sharpe, use a 0% risk-free rate. For Sortino, use a 0% target/minimum
+acceptable return. Annualize daily-return-based metrics using 252 trading days
+per year.
 
 ---
 
@@ -639,8 +683,8 @@ Display:
 - cointegration p-value
 - ADF p-value
 - half-life
-- hedge ratios
-- current z-score
+- OLS hedge ratio
+- training-period z-score as of the last valid training observation
 - observations
 
 ---
@@ -667,7 +711,8 @@ Display:
 
 Charts:
 
-1. Normalized prices
+1. Normalized prices, with each security set to 100 at the beginning of the
+	selected chart period
 2. Spread
 3. Z-score
 4. Kalman hedge ratio
@@ -802,6 +847,9 @@ Add configuration for:
 - transaction cost
 - fixed capital
 - rolling window
+- Sharpe risk-free rate
+- Sortino target/minimum acceptable return
+- annualization factor
 
 Current values:
 
@@ -828,6 +876,20 @@ Exit:
 Transaction cost:
 
 0.001 per side
+
+Rolling window: 60 trading observations (approximately three months).
+
+Capital per pair: ₹100,000.
+
+Sharpe risk-free rate: 0%.
+
+Sortino target/minimum acceptable return: 0%.
+
+Annualization factor: 252 trading days per year.
+
+Use the specified rolling-window and capital-per-pair defaults. Finalize all
+configuration choices before examining 2024–2025 OOS performance, and do not
+tune these values against the OOS results.
 
 The configuration should not contain unnecessary parameters.
 
@@ -957,6 +1019,12 @@ For each pair calculate:
 - OLS hedge ratio
 - current z-score
 
+Use only 2016–2023 training observations for every scanner statistic. Calculate
+correlation from daily returns. Report the OLS hedge ratio only; do not
+calculate or display a Kalman hedge ratio in the scanner. The scanner z-score
+is computed as of the last valid training-period observation using the
+previous N spread observations, excluding that current observation.
+
 Return the results in a pandas DataFrame.
 
 Do not create a composite score.
@@ -995,7 +1063,7 @@ Static OLS spread and hedge ratio for a selected pair.
 
 Implement adaptive OLS estimation.
 
-Use a configurable rolling window.
+Use the configured 60-trading-observation rolling window.
 
 At each point:
 
@@ -1003,6 +1071,8 @@ At each point:
 - estimate alpha and beta
 - calculate the current hedge ratio
 - calculate the corresponding spread
+- initialize/warm up from training observations before the OOS period
+- update during OOS only with observations that have already become available
 
 Avoid look-ahead bias.
 
@@ -1029,6 +1099,10 @@ Estimate:
 
 The Kalman model must use sequential information and must not use future observations when generating historical estimates.
 
+Initialize using training data and estimate/select the model/noise parameters
+using only that period. Keep those parameters fixed during OOS while updating
+the state sequentially using observations available through each date.
+
 Expected result:
 
 Time-varying Kalman alpha and beta.
@@ -1050,6 +1124,10 @@ Entry:
 Exit:
 
 |z| < 0.5
+
+Generate each z-score from the previous N spread observations only, excluding
+the current observation. Do not generate a trading signal until the required
+history is available and the scale estimate is valid.
 
 No stop-loss.
 
@@ -1077,6 +1155,8 @@ Calculate strategy returns.
 Implement:
 
 - fixed capital per pair
+- equal 50/50 notional allocation across the pair's two legs
+- share quantities calculated from available prices
 - long/short position calculation
 - daily P&L
 - cumulative P&L
@@ -1087,7 +1167,9 @@ Transaction cost:
 
 10 bps per side.
 
-Make sure transaction costs are applied only when the relevant position changes.
+Calculate and combine each leg's P&L. Measure pair returns relative to its
+fixed allocated capital. Apply 10-bps-per-side costs to traded notional when a
+position is opened, changed, or closed.
 
 Expected result:
 
@@ -1141,6 +1223,9 @@ Calculate:
 - turnover
 - total transaction costs
 
+Use a 0% risk-free rate for Sharpe and a 0% target/minimum acceptable return for
+Sortino. Annualize daily-return-based metrics using 252 trading days per year.
+
 Expected result:
 
 A clean performance summary for every strategy.
@@ -1162,6 +1247,9 @@ The page should allow the user to select a pair and display:
 - Static OLS hedge ratio
 - Rolling OLS hedge ratio
 - Kalman hedge ratio
+
+Calculate correlation from daily returns. Normalize each security's price to
+100 at the beginning of the selected chart period.
 
 The page should reuse functions already created in `src/`.
 

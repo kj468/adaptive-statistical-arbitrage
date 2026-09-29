@@ -5,3 +5,5 @@ scipy
 statsmodels
 yfinance
 plotly
+pyarrow
+pytest
