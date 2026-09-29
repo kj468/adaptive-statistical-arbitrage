@@ -1,0 +1,1 @@
+"""Reusable quantitative research modules."""
