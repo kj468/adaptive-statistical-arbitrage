@@ -36,6 +36,26 @@ def _line_chart(title: str, series: dict[str, pd.Series], y_title: str) -> go.Fi
 	return figure
 
 
+@st.cache_data(show_spinner="Calculating pair models and training statistics...")
+def _analyze_pair(prices: pd.DataFrame) -> tuple:
+	static_fit = fit_static_ols(prices["y"], prices["x"], TRAIN_START_DATE, TRAIN_END_DATE)
+	static_spread = apply_static_ols(prices["y"], prices["x"], static_fit.alpha, static_fit.beta)
+	rolling_frame = rolling_ols(prices["y"], prices["x"], ROLLING_WINDOW)
+	kalman_frame = kalman_hedge_ratios(prices["y"], prices["x"], TRAIN_START_DATE, TRAIN_END_DATE)
+	training_prices = select_date_range(prices, TRAIN_START_DATE, TRAIN_END_DATE)
+	return (
+		static_fit,
+		static_spread,
+		rolling_frame,
+		kalman_frame,
+		training_prices,
+		correlation(training_prices["y"], training_prices["x"]),
+		cointegration_test(training_prices["y"], training_prices["x"]),
+		adf_test(static_fit.spread),
+		half_life(static_fit.spread),
+	)
+
+
 st.title("Pair Analyzer")
 try:
 	dataset = _load_data()
@@ -95,20 +115,17 @@ if chart_start > chart_end:
 	st.stop()
 
 try:
-	static_fit = fit_static_ols(
-		prices["y"], prices["x"], TRAIN_START_DATE, TRAIN_END_DATE
-	)
-	static_spread = apply_static_ols(prices["y"], prices["x"], static_fit.alpha, static_fit.beta)
-	rolling_frame = rolling_ols(prices["y"], prices["x"], ROLLING_WINDOW)
-	kalman_frame = kalman_hedge_ratios(
-		prices["y"], prices["x"], TRAIN_START_DATE, TRAIN_END_DATE
-	)
-	training_prices = select_date_range(prices, TRAIN_START_DATE, TRAIN_END_DATE)
-	training_spread = static_fit.spread
-	return_correlation = correlation(training_prices["y"], training_prices["x"])
-	coint = cointegration_test(training_prices["y"], training_prices["x"])
-	adf = adf_test(training_spread)
-	spread_half_life = half_life(training_spread)
+	(
+		static_fit,
+		static_spread,
+		rolling_frame,
+		kalman_frame,
+		training_prices,
+		return_correlation,
+		coint,
+		adf,
+		spread_half_life,
+	) = _analyze_pair(prices)
 except (KeyError, ValueError, np.linalg.LinAlgError) as error:
 	st.error(f"Pair analysis could not be calculated: {error}")
 	st.stop()

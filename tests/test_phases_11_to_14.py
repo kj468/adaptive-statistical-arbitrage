@@ -51,12 +51,31 @@ def test_static_backtest_accounts_for_pair_legs_costs_and_metrics() -> None:
 	assert result.daily["equity_curve"].iloc[-1] == pytest.approx(
 		100_000 + result.daily["net_pnl"].sum()
 	)
-	entries = result.daily.loc[result.daily["signal"].diff().fillna(result.daily["signal"]).ne(0)]
-	entries = entries.loc[entries["signal"] != 0]
-	for _, entry in entries.iterrows():
+	signal_entries = result.daily.loc[
+		result.daily["signal"].diff().fillna(result.daily["signal"]).ne(0)
+	]
+	signal_entries = signal_entries.loc[signal_entries["signal"] != 0]
+	for signal_date, signal_row in signal_entries.iterrows():
+		fill_index = result.daily.index.get_loc(signal_date) + 1
+		assert fill_index < len(result.daily)
+		entry = result.daily.iloc[fill_index]
+		assert result.daily.index[fill_index] > signal_date
+		assert entry["position"] == signal_row["signal"]
+		assert result.daily.loc[signal_date, "position"] == 0
 		assert abs(entry["shares_y"] * entry["price_y"]) == pytest.approx(50_000)
 		assert abs(entry["shares_x"] * entry["price_x"]) == pytest.approx(50_000)
+		assert (entry["shares_y"] > 0) == (entry["position"] > 0)
+		assert (entry["shares_x"] > 0) == (entry["position"] < 0)
+		assert entry["transaction_cost"] == pytest.approx(100.0)
 	assert not result.trades.empty
+	for _, trade in result.trades.iterrows():
+		trade_days = result.daily.loc[trade["entry_date"] : trade["exit_date"]]
+		assert trade["gross_pnl"] == pytest.approx(trade_days["gross_pnl"].sum())
+		assert trade["transaction_cost"] == pytest.approx(trade_days["transaction_cost"].sum())
+		assert trade["net_pnl"] == pytest.approx(trade["gross_pnl"] - trade["transaction_cost"])
+	assert result.daily.iloc[-1]["position"] == 0
+	assert result.daily.iloc[-1]["shares_y"] == 0
+	assert result.daily.iloc[-1]["shares_x"] == 0
 
 	metrics = calculate_metrics(result)
 	assert metrics["number_of_trades"] == len(result.trades)
@@ -64,6 +83,11 @@ def test_static_backtest_accounts_for_pair_legs_costs_and_metrics() -> None:
 	assert metrics["transaction_costs"] == pytest.approx(result.daily["transaction_cost"].sum())
 	assert np.isfinite(metrics["cumulative_return"])
 	assert metrics["maximum_drawdown"] <= 0
+	equity = pd.concat(
+		[pd.Series([result.capital_per_pair]), result.daily["equity_curve"].reset_index(drop=True)]
+	)
+	expected_drawdown = (equity / equity.cummax() - 1).min()
+	assert metrics["maximum_drawdown"] == pytest.approx(expected_drawdown)
 
 
 def test_backtest_rejects_invalid_method_and_capital() -> None:

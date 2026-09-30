@@ -44,6 +44,9 @@ TRADE_COLUMNS = [
 	"exit_zscore",
 	"holding_period",
 	"exit_reason",
+	"gross_pnl",
+	"transaction_cost",
+	"net_pnl",
 ]
 
 
@@ -87,10 +90,11 @@ def run_backtest(
 ) -> BacktestResult:
 	"""Backtest one pair, resetting flat at the requested evaluation start.
 
-	A signal is evaluated at the close and transacted at that same close. P&L
-	for a date is earned by the shares held across the preceding price interval;
-	new positions therefore start earning from the following observation. Leg
-	notionals are 50/50 at entry and share quantities remain fixed until exit.
+	Signals are evaluated at the adjusted close and filled at the next available
+	adjusted close, the price convention already used by this pipeline. P&L on a
+	date is earned by shares held over the preceding close-to-close interval;
+	shares are updated only after that interval is marked. Leg notionals are 50/50
+	at entry and share quantities remain fixed until exit.
 	"""
 	method_key = method.strip().lower().replace(" ", "_")
 	if method_key in {"static", "ols", "static_ols"}:
@@ -130,9 +134,9 @@ def run_backtest(
 	shares_y = 0.0
 	shares_x = 0.0
 	active_trade: dict[str, object] | None = None
-	previous_position = 0
+	position = 0
 
-	for timestamp, signal_row in signals.iterrows():
+	for signal_index, (timestamp, signal_row) in enumerate(signals.iterrows()):
 		price_y = float(period.at[timestamp, "y"])
 		price_x = float(period.at[timestamp, "x"])
 		all_position = prices.index.get_loc(timestamp)
@@ -142,42 +146,60 @@ def run_backtest(
 			pnl_x = shares_x * (price_x - float(previous_prices["x"]))
 		else:
 			pnl_y = pnl_x = 0.0
+		if active_trade is not None:
+			active_trade["gross_pnl"] += pnl_y + pnl_x
 
-		target_position = int(signal_row["position"])
+		# The current bar's close generates a signal, but only the previous
+		# observation's close signal can be executed at this close.
+		queued_signal = signals.iloc[signal_index - 1] if signal_index > 0 else None
 		turnover = 0.0
 		cost = 0.0
-		if target_position != previous_position:
-			turnover += abs(shares_y) * price_y + abs(shares_x) * price_x
-			cost += turnover * transaction_cost_per_side
-			if active_trade is not None:
-				active_trade.update(
-					{
-						"exit_date": timestamp,
-						"exit_zscore": float(signal_row["zscore"]),
-						"holding_period": prices.index.get_loc(timestamp)
-						- prices.index.get_loc(active_trade["entry_date"]),
-						"exit_reason": "zscore_exit",
-					}
-				)
-				trades.append(active_trade)
-				active_trade = None
-				shares_y = shares_x = 0.0
-			if target_position != 0:
+		if queued_signal is not None:
+			target_position = int(queued_signal["position"])
+			if target_position != position:
+				if position != 0:
+					exit_turnover = abs(shares_y) * price_y + abs(shares_x) * price_x
+					exit_cost = exit_turnover * transaction_cost_per_side
+					turnover += exit_turnover
+					cost += exit_cost
+					assert active_trade is not None
+					active_trade["transaction_cost"] += exit_cost
+					active_trade.update(
+						{
+							"exit_date": timestamp,
+							"exit_zscore": float(queued_signal["zscore"]),
+							"holding_period": prices.index.get_loc(timestamp)
+							- prices.index.get_loc(active_trade["entry_date"]),
+							"exit_reason": "zscore_exit",
+							"net_pnl": active_trade["gross_pnl"]
+							- active_trade["transaction_cost"],
+						}
+					)
+					trades.append(active_trade)
+					active_trade = None
+					shares_y = shares_x = 0.0
+
+			if target_position != position and target_position != 0:
 				half_capital = capital_per_pair / 2
 				shares_y = target_position * half_capital / price_y
 				shares_x = -target_position * half_capital / price_x
+				entry_turnover = abs(shares_y) * price_y + abs(shares_x) * price_x
+				entry_cost = entry_turnover * transaction_cost_per_side
+				turnover += entry_turnover
+				cost += entry_cost
 				active_trade = {
 					"direction": "long_spread" if target_position > 0 else "short_spread",
 					"entry_date": timestamp,
 					"exit_date": pd.NaT,
-					"entry_zscore": float(signal_row["zscore"]),
+					"entry_zscore": float(queued_signal["zscore"]),
 					"exit_zscore": np.nan,
 					"holding_period": np.nan,
 					"exit_reason": "open",
+					"gross_pnl": 0.0,
+					"transaction_cost": entry_cost,
+					"net_pnl": np.nan,
 				}
-				turnover += abs(shares_y) * price_y + abs(shares_x) * price_x
-				cost += (abs(shares_y) * price_y + abs(shares_x) * price_x) * transaction_cost_per_side
-		previous_position = target_position
+			position = target_position
 
 		rows.append(
 			{
@@ -185,8 +207,8 @@ def run_backtest(
 				"price_x": price_x,
 				"spread": float(signal_row.get("spread", spread.loc[timestamp])),
 				"zscore": float(signal_row["zscore"]),
-				"signal": target_position,
-				"position": target_position,
+				"signal": int(signal_row["position"]),
+				"position": position,
 				"shares_y": shares_y,
 				"shares_x": shares_x,
 				"pnl_y": pnl_y,
@@ -198,7 +220,7 @@ def run_backtest(
 			}
 		)
 
-	# Liquidate any remaining position at the final evaluation close.
+	# Liquidate any remaining position at the final available evaluation close.
 	if active_trade is not None:
 		last_date = signals.index[-1]
 		last_prices = period.loc[last_date]
@@ -208,6 +230,9 @@ def run_backtest(
 		rows[-1]["transaction_cost"] += liquidation_cost
 		rows[-1]["net_pnl"] -= liquidation_cost
 		rows[-1]["position"] = 0
+		rows[-1]["shares_y"] = 0.0
+		rows[-1]["shares_x"] = 0.0
+		active_trade["transaction_cost"] += liquidation_cost
 		active_trade.update(
 			{
 				"exit_date": last_date,
@@ -215,6 +240,8 @@ def run_backtest(
 				"holding_period": prices.index.get_loc(last_date)
 				- prices.index.get_loc(active_trade["entry_date"]),
 				"exit_reason": "period_end",
+				"net_pnl": active_trade["gross_pnl"]
+				- active_trade["transaction_cost"],
 			}
 		)
 		trades.append(active_trade)

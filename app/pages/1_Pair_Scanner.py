@@ -14,8 +14,8 @@ def _load_data() -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner="Calculating training-period pair statistics...")
-def _scan(sector: str) -> pd.DataFrame:
-	return scan_sector(sector)
+def _scan(sector: str, dataset: pd.DataFrame) -> pd.DataFrame:
+	return scan_sector(sector, dataset=dataset)
 
 
 st.title("Pair Scanner")
@@ -39,7 +39,7 @@ if missing_tickers:
 sector = st.selectbox("Sector", list(STOCK_UNIVERSE))
 if st.button("Generate pairs", type="primary"):
 	try:
-		st.session_state["pair_scan_results"] = _scan(sector)
+		st.session_state["pair_scan_results"] = _scan(sector, dataset)
 		st.session_state["pair_scan_sector"] = sector
 	except (ValueError, KeyError, OSError) as error:
 		st.error(f"Could not scan this sector: {error}")
