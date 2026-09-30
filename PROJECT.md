@@ -95,7 +95,6 @@ Expected libraries include:
 
 - pandas
 - numpy
-- scipy
 - statsmodels
 - yfinance
 - a suitable Kalman/state-space implementation
@@ -1167,6 +1166,8 @@ Transaction cost:
 
 10 bps per side.
 
+Signals are calculated from the day's adjusted close and filled at the next available trading day's adjusted close. The dataset uses adjusted close and has no usable open-price fill in the current backtest path. Daily P&L is close-to-close for shares held over the preceding interval.
+
 Calculate and combine each leg's P&L. Measure pair returns relative to its
 fixed allocated capital. Apply 10-bps-per-side costs to traded notional when a
 position is opened, changed, or closed.
@@ -1373,6 +1374,8 @@ Verify that:
 
 # PHASE 20 — Cleanup and Documentation
 
+**Status: Complete.** The README now covers project motivation, methods, data, pair selection, trading assumptions, backtesting, limitations, and local run instructions. No headline performance results have been fabricated or published.
+
 ## Objective
 
 Prepare the final GitHub project.
@@ -1392,7 +1395,7 @@ Update:
 - PROJECT.md
 - comments/docstrings where useful
 
-The README should eventually explain:
+The README now explains:
 
 1. Project motivation
 2. Quantitative methodology

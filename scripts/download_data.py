@@ -26,7 +26,6 @@ from config.config import (
 
 LOGGER = logging.getLogger(__name__)
 OUTPUT_PATH = Path(__file__).resolve().parents[1] / "data" / "market_data.parquet"
-PRICE_COLUMNS = ("open", "high", "low", "close", "adj_close", "volume")
 REQUIRED_COLUMNS = ("adj_close", "volume")
 COLUMN_NAMES = {
     "open": "open",
@@ -137,12 +136,10 @@ def download_dataset(output_path: Path = OUTPUT_PATH) -> bool:
     a False return so they are never mistaken for a complete universe.
     """
     datasets: list[pd.DataFrame] = []
-    failures: dict[str, str] = {}
 
     for ticker in TICKERS:
         data, error = _download_ticker(ticker)
         if error:
-            failures[ticker] = error
             LOGGER.error("%s: %s", ticker, error)
         elif data is not None:
             datasets.append(data)

@@ -1,7 +1,6 @@
 streamlit
 numpy
 pandas
-scipy
 statsmodels
 yfinance
 plotly
