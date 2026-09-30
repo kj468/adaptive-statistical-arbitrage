@@ -106,18 +106,17 @@ def adf_test(spread: pd.Series) -> ADFResult:
 	values = _clean_series(spread, "Spread")
 	if len(values) < 4:
 		raise ValueError("ADF test requires at least four finite observations")
-	result = adfuller(
+	statistic, pvalue, used_lag, observations, critical_values, _ = adfuller(
 		values.to_numpy(dtype=float),
 		regression="c",
 		autolag="AIC",
-		result_object=True,
 	)
 	return ADFResult(
-		float(result.statistic),
-		float(result.pvalue),
-		int(result.lags),
-		int(result.nobs),
-		{key: float(value) for key, value in result.critical_values.items()},
+		float(statistic),
+		float(pvalue),
+		int(used_lag),
+		int(observations),
+		{key: float(value) for key, value in critical_values.items()},
 	)
 
 
