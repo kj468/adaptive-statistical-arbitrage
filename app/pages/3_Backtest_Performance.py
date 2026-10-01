@@ -123,13 +123,13 @@ figure.update_layout(
 	yaxis_title="Equity (₹)",
 	hovermode="x unified",
 )
-st.plotly_chart(figure, width="stretch")
+st.plotly_chart(figure, use_container_width=True)
 
 st.subheader("Trades")
 if result.trades.empty:
 	st.info("No trades were generated in the selected test period.")
 else:
-	st.dataframe(result.trades, width="stretch", hide_index=True)
+	st.dataframe(result.trades, use_container_width=True, hide_index=True)
 
 with st.expander("Daily positions and P&L"):
-	st.dataframe(result.daily, width="stretch")
+	st.dataframe(result.daily, use_container_width=True)

@@ -82,7 +82,7 @@ display_columns = [
 	"ols_hedge_ratio",
 	"current_zscore",
 ]
-st.dataframe(available[display_columns], width="stretch", hide_index=True)
+st.dataframe(available[display_columns], use_container_width=True, hide_index=True)
 
 if available.empty:
 	st.info("No valid pairs match this filter.")

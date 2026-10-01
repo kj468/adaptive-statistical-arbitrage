@@ -166,10 +166,10 @@ if chart_prices.empty:
 
 normalized = chart_prices.div(chart_prices.iloc[0]).mul(100)
 normalized.columns = ["Stock A", "Stock B"]
-st.plotly_chart(_line_chart("Normalized adjusted prices (base 100)", {name: normalized[name] for name in normalized}, "Index"), width="stretch")
-st.plotly_chart(_line_chart(f"{model_name} spread", {model_name: chart_spread}, "Spread"), width="stretch")
-st.plotly_chart(_line_chart(f"{model_name} z-score", {model_name: chart_zscore}, "Z-score"), width="stretch")
-st.plotly_chart(_line_chart("Kalman hedge ratio", {"β": kalman_frame["beta"].loc[chart_start_ts:chart_end_ts]}, "β"), width="stretch")
+st.plotly_chart(_line_chart("Normalized adjusted prices (base 100)", {name: normalized[name] for name in normalized}, "Index"), use_container_width=True)
+st.plotly_chart(_line_chart(f"{model_name} spread", {model_name: chart_spread}, "Spread"), use_container_width=True)
+st.plotly_chart(_line_chart(f"{model_name} z-score", {model_name: chart_zscore}, "Z-score"), use_container_width=True)
+st.plotly_chart(_line_chart("Kalman hedge ratio", {"β": kalman_frame["beta"].loc[chart_start_ts:chart_end_ts]}, "β"), use_container_width=True)
 
 current = pd.concat(
 	[chart_spread.rename("spread"), chart_zscore.rename("zscore")], axis=1
